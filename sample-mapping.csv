@@ -1,0 +1,10 @@
+Brand,Product,Source URL,Source type,Last known EOS date,Notes
+Acme,AcmeDB,https://example.com/acme/acmedb/lifecycle,vendor page,2025-06-30,Sample data - fictional product
+Nimbus,Nimbus OS,https://example.com/nimbus/os/lifecycle,vendor page,2027-02-15,Sample data - fictional product
+Quantic,Quantic CRM,https://example.com/quantic/crm/lifecycle,vendor page,2027-09-01,Sample data - fictional product
+Zorblax,Zorblax Backup,https://example.com/zorblax/backup/lifecycle,vendor page,,Sample data - fictional product; no EOS published
+Frobnic,Frobnicator Server,https://example.com/frobnic/server/lifecycle,vendor page,2026-05-01,Sample data - fictional product
+Lumen,Lumen Mail,https://example.com/lumen/mail/lifecycle,vendor page,2027-06-30,Sample data - fictional product
+Orion,Orion ERP,https://example.com/orion/erp/lifecycle,vendor page,2025-12-31,Sample data - fictional product; extended support subscribed
+Vantia,Vantia Hypervisor,https://example.com/vantia/portal/lifecycle,manual,,Sample data - fictional product; login-gated vendor
+Acme,Acme Web Server,https://example.com/acme/webserver/lifecycle,vendor page,2026-12-20,Sample data - fictional product

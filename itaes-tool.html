@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>IT Asset EOS Scanner (ITAES)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 16px 20px 40px; color: #1c1c1c; background: #f7f7f5; font-size: 15px; line-height: 1.45; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 22px 0 8px; }
+  h3 { font-size: 15px; margin: 14px 0 6px; }
+  .subtitle { color: #555; margin: 0 0 14px; }
+  .note { border: 1px solid #c9c9c9; border-left: 4px solid #2a6db0; background: #eef4fb; padding: 10px 12px; margin: 10px 0; border-radius: 4px; }
+  .note.warn { border-left-color: #b07a00; background: #fdf6e0; }
+  .note.error { border-left-color: #b00020; background: #fdecea; }
+  .panel { background: #fff; border: 1px solid #d8d8d8; border-radius: 6px; padding: 14px; margin: 12px 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 13px; font-weight: 600; color: #333; }
+  input[type="number"] { width: 110px; padding: 6px; }
+  input[type="text"], input[type="date"], select { padding: 6px; }
+  button { padding: 8px 14px; font-size: 14px; cursor: pointer; border-radius: 4px; border: 1px solid #888; background: #fff; }
+  button.primary { background: #2a6db0; color: #fff; border-color: #2a6db0; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #dropzone { border: 2px dashed #888; border-radius: 6px; padding: 22px; text-align: center; color: #555; background: #fff; margin: 8px 0; }
+  #dropzone.over { border-color: #2a6db0; background: #eef4fb; }
+  #progress { width: 100%; height: 18px; }
+  #status { font-size: 14px; margin: 6px 0; }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+  .card { background: #fff; border: 1px solid #d8d8d8; border-radius: 6px; padding: 10px 14px; min-width: 120px; }
+  .card .n { font-size: 26px; font-weight: 700; }
+  .card .l { font-size: 13px; color: #555; }
+  .tablewrap { max-height: 62vh; overflow: auto; border: 1px solid #d8d8d8; background: #fff; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { border-bottom: 1px solid #e3e3e3; padding: 6px 8px; text-align: left; vertical-align: top; white-space: normal; }
+  th { position: sticky; top: 0; background: #ececec; cursor: pointer; z-index: 1; }
+  th:hover { background: #ddd; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; }
+  .b-flagged { background: #b00020; }
+  .b-amber { background: #b07a00; }
+  .b-notpub { background: #666; }
+  .b-incomplete { background: #8a6d00; }
+  .b-attention { background: #c2570a; }
+  .b-ok { background: #2e7d32; }
+  .b-manual { background: #6a4fa3; }
+  .small { font-size: 13px; color: #555; }
+  #manualPanel { display: none; }
+  #manualPanel input { margin-right: 6px; }
+  #parseReport { white-space: pre-wrap; font-size: 13.5px; }
+  .err { color: #b00020; font-weight: 600; }
+  a { color: #2a6db0; }
+</style>
+</head>
+<body>
+<h1>IT Asset EOS Scanner (ITAES)</h1>
+<p class="subtitle">Helps an IT Auditor detect assets that may have reached End of Life or End of Support. One file, runs in this browser only. Each scan is standalone.</p>
+
+<div class="note"><strong>Privacy:</strong> Your asset file is never uploaded — it is parsed only in this browser. Only product name, brand and version are sent to public sources to look up End of Support.</div>
+<div class="note warn"><strong>For the office:</strong> live End of Support checks need internet access to <code>endoflife.date</code> and <code>eosl.ai</code>, plus the vendor domains listed in the mapping file. If those are blocked, parsing, the table and export still work; each asset will show the fetch failure and fall back to the mapping file or a manual check.</div>
+
+<div class="panel">
+  <h2>1. Load an asset list</h2>
+  <div id="dropzone">Drag an asset file here (.xlsx, .xls, .csv, .txt), or use the file picker below.</div>
+  <div class="row">
+    <div class="field"><label for="assetFile">Asset file</label><input type="file" id="assetFile" accept=".xlsx,.xls,.csv,.txt"></div>
+    <div class="field"><label for="mapFile">Vendor-to-source mapping file (Excel or CSV, optional)</label><input type="file" id="mapFile" accept=".xlsx,.xls,.csv,.txt"></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="field"><label for="maxRows">Max worksheet rows (configurable limit)</label><input type="number" id="maxRows" value="100000" min="1"></div>
+    <div class="field"><label for="maxCell">Max cell length in characters (configurable limit)</label><input type="number" id="maxCell" value="32767" min="1"></div>
+  </div>
+  <p class="small">Fixed limits: max input file 100 MB, max zip entries 10,000, max decomposed XML 250 MB. An input over a limit is rejected with a clear error naming the limit.</p>
+  <div id="fileInfo" class="small"></div>
+  <div id="loadError" class="err"></div>
+</div>
+
+<div class="panel">
+  <h2>2. Check End of Support</h2>
+  <div class="row">
+    <button id="btnCheck" class="primary" disabled>Check EOS</button>
+    <button id="btnStop" disabled>Stop</button>
+    <label><input type="checkbox" id="skipFetch"> Skip live fetch (use mapping file and manual check only)</label>
+  </div>
+  <p style="margin:8px 0"><progress id="progress" value="0" max="100"></progress></p>
+  <div id="status">No file loaded.</div>
+  <div id="checkFinished" class="small"></div>
+  <h3>Parse report</h3>
+  <div id="parseReport">Nothing loaded yet.</div>
+</div>
+
+<div class="panel">
+  <h2>3. Results</h2>
+  <div class="cards" id="summaryCards"></div>
+  <p class="small">A finding is a flag to investigate, not a verdict. Extended support = Yes is shown per asset but does not change the flag in this version — how it affects flagging is still to be confirmed.</p>
+  <div class="row">
+    <div class="field"><label for="search">Search (name, brand, version)</label><input type="text" id="search" placeholder="Type to search…"></div>
+    <div class="field"><label for="filter">Result filter</label>
+      <select id="filter">
+        <option value="">All</option>
+        <option>Flagged</option>
+        <option>Amber</option>
+        <option>In support</option>
+        <option>Not published</option>
+        <option>Incomplete</option>
+        <option>Attention</option>
+        <option>Manual check needed</option>
+      </select>
+    </div>
+    <button id="btnExport">Export enhanced Excel</button>
+    <button id="btnClear">Clear</button>
+  </div>
+  <div id="manualPanel" class="note" style="margin-top:12px">
+    <strong>Manual check</strong> — <span id="manualFor"></span><br>
+    <label>EOS date <input type="date" id="manualDate"></label>
+    <label>Source URL <input type="text" id="manualSource" size="40" placeholder="https://…"></label>
+    <label>Verified by <input type="text" id="manualBy" size="20" placeholder="Your name or initials"></label>
+    <button id="manualSave" class="primary">Save manual entry</button>
+    <button id="manualCancel">Cancel</button>
+  </div>
+  <div class="tablewrap" style="margin-top:12px">
+    <table id="resultsTable">
+      <thead><tr>
+        <th data-k="assetId">Asset ID</th><th data-k="name">Name</th><th data-k="brand">Brand</th>
+        <th data-k="model">Model</th><th data-k="version">Version</th><th data-k="status">Status</th>
+        <th data-k="eosDate">EOS Date</th><th data-k="phase">Phase</th><th data-k="result">Result</th>
+        <th data-k="source">Source</th><th data-k="route">Route</th><th data-k="extSupport">Extended Support</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="resultsBody"><tr><td colspan="13" class="small">No assets loaded.</td></tr></tbody>
+    </table>
+  </div>
+  <p class="small">This is a snapshot at the time the check ran. End of Support data can change over time; the tool does not claim a date is permanent.</p>
+</div>
+
+<script>
+"use strict";
+/* ITAES v1 — single file, inline only. No external libraries. */
+
+/* ---------- constants & limits (NFR-05) ---------- */
+var MAX_FILE_BYTES = 100 * 1024 * 1024;
+var MAX_ZIP_ENTRIES = 10000;
+var MAX_XML_BYTES = 250 * 1024 * 1024;
+var DEFAULT_MAX_ROWS = 100000;
+var DEFAULT_MAX_CELL = 32767;
+var EOL_API = "https://endoflife.date/api/";
+var EOSL_URL = "https://eosl.ai/data/lookup.json";
+
+/* ---------- small utilities ---------- */
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function pad2(n) { return (n < 10 ? "0" : "") + n; }
+function isoDate(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+function todayISO() { return isoDate(new Date()); }
+function parseDateLoose(s) {
+  if (s == null) return null;
+  if (s instanceof Date) return isNaN(s.getTime()) ? null : s;
+  var t = String(s).trim();
+  if (!t) return null;
+  var m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) { var d = new Date(+m[1], +m[2] - 1, +m[3]); return isNaN(d.getTime()) ? null : d; }
+  m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+  if (m) { var d2 = new Date(+m[3], +m[2] - 1, +m[1]); return isNaN(d2.getTime()) ? null : d2; }
+  var n = Number(t);
+  if (!isNaN(n) && n > 20000 && n < 80000) return excelSerialToDate(n); /* Excel serial */
+  var d3 = new Date(t);
+  return isNaN(d3.getTime()) ? null : d3;
+}
+function excelSerialToDate(n) { /* Excel epoch 1899-12-30 */
+  var d = new Date(Math.round((n - 25569) * 86400 * 1000));
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function addMonths(d, months) {
+  var y = d.getFullYear(), m = d.getMonth() + months, day = d.getDate();
+  var last = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(day, last));
+}
+function getMaxRows() { var v = parseInt($("maxRows").value, 10); return (isNaN(v) || v < 1) ? DEFAULT_MAX_ROWS : v; }
+function getMaxCell() { var v = parseInt($("maxCell").value, 10); return (isNaN(v) || v < 1) ? DEFAULT_MAX_CELL : v; }
+function checkCellLength(s) {
+  if (s != null && String(s).length > getMaxCell()) throw new Error("Cell length limit exceeded: a cell is longer than the configured max cell length of " + getMaxCell() + " characters.");
+}
+function fail(msg) { throw new Error(msg); }
+
+/* ---------- CRC32 (for .xlsx export) ---------- */
+var CRC_TABLE = (function () {
+  var t = [], c;
+  for (var n = 0; n < 256; n++) { c = n; for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(bytes) {
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function strToBytes(s) { return new TextEncoder().encode(s); }
+function u16(n) { return [n & 0xFF, (n >> 8) & 0xFF]; }
+function u32(n) { return [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF]; }
+
+/* ---------- ZIP reading (inline, DecompressionStream) ---------- */
+async function inflateRaw(data) {
+  var out = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
+  return new Uint8Array(out);
+}
+async function readZip(buffer) {
+  var bytes = new Uint8Array(buffer);
+  var view = new DataView(buffer);
+  var eocd = -1;
+  var start = Math.max(0, bytes.length - 65557);
+  for (var i = bytes.length - 22; i >= start; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) fail("Not a valid zip-based file (no end-of-central-directory record).");
+  var total = view.getUint16(eocd + 10, true);
+  var cdOffset = view.getUint32(eocd + 16, true);
+  if (total > MAX_ZIP_ENTRIES) fail("Zip entries limit exceeded: the file has " + total + " zip entries, over the limit of " + MAX_ZIP_ENTRIES + ".");
+  var entries = [], p = cdOffset, totalXml = 0;
+  for (var e = 0; e < total; e++) {
+    if (view.getUint32(p, true) !== 0x02014b50) fail("Corrupt zip file: bad central directory entry.");
+    var method = view.getUint16(p + 10, true);
+    var compSize = view.getUint32(p + 20, true);
+    var nameLen = view.getUint16(p + 28, true);
+    var extraLen = view.getUint16(p + 30, true);
+    var commentLen = view.getUint16(p + 32, true);
+    var localOff = view.getUint32(p + 42, true);
+    var name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    var lh = localOff;
+    if (view.getUint32(lh, true) !== 0x04034b50) fail("Corrupt zip file: bad local header for " + name + ".");
+    var lhNameLen = view.getUint16(lh + 26, true), lhExtraLen = view.getUint16(lh + 28, true);
+    var dataStart = lh + 30 + lhNameLen + lhExtraLen;
+    var raw = bytes.subarray(dataStart, dataStart + compSize);
+    var data;
+    if (method === 0) data = raw;
+    else if (method === 8) data = await inflateRaw(raw);
+    else fail("Unsupported zip compression method " + method + " in entry " + name + ".");
+    if (name.toLowerCase().indexOf(".xml") !== -1) { totalXml += data.length; if (totalXml > MAX_XML_BYTES) fail("Decomposed XML limit exceeded: the file expands beyond " + (MAX_XML_BYTES / 1048576) + " MB of XML."); }
+    entries.push({ name: name, data: data });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+/* ---------- .xlsx parsing ---------- */
+function xmlAttr(tag, attr) { var m = tag.match(new RegExp(attr + '="([^"]*)"')); return m ? m[1] : null; }
+function colToIndex(ref) { var m = ref.match(/^([A-Z]+)/); if (!m) return 0; var s = m[1], n = 0; for (var i = 0; i < s.length; i++) n = n * 26 + (s.charCodeAt(i) - 64); return n - 1; }
+function parseSharedStrings(xml) {
+  var out = [], re = /<si>([\s\S]*?)<\/si>/g, m;
+  while ((m = re.exec(xml)) !== null) {
+    var inner = m[1], parts = [], tm;
+    var tr = /<t[^>]*>([\s\S]*?)<\/t>/g;
+    while ((tm = tr.exec(inner)) !== null) parts.push(tm[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'"));
+    out.push(parts.join(""));
+  }
+  return out;
+}
+function parseSheetXml(xml, shared, maxRows, maxCell) {
+  var rows = [], rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g, rm;
+  while ((rm = rowRe.exec(xml)) !== null) {
+    if (rows.length >= maxRows) fail("Worksheet rows limit exceeded: a worksheet has more rows than the configured max worksheet rows of " + maxRows + ".");
+    var row = [], cellRe = /<c([^>]*)>([\s\S]*?)<\/c>|<c([^>]*)\/>/g, cm;
+    while ((cm = cellRe.exec(rm[1])) !== null) {
+      var attrs = cm[1] || cm[3] || "", inner = cm[2] || "";
+      var ref = xmlAttr(attrs, "r") || "";
+      var idx = colToIndex(ref);
+      var t = xmlAttr(attrs, "t") || "n";
+      var val = null;
+      if (t === "s") { var vi = inner.match(/<v>(-?\d+)<\/v>/); if (vi) val = shared[+vi[1]] != null ? shared[+vi[1]] : ""; }
+      else if (t === "inlineStr" || t === "str") { var ti = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/); val = ti ? ti[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") : ""; }
+      else if (t === "b") { val = inner.indexOf(">1<") !== -1 ? "TRUE" : "FALSE"; }
+      else { var v2 = inner.match(/<v>([\s\S]*?)<\/v>/); val = v2 ? v2[1] : ""; }
+      if (val != null && String(val).length > maxCell) fail("Cell length limit exceeded: a cell is longer than the configured max cell length of " + maxCell + " characters.");
+      row[idx] = val == null ? "" : String(val);
+    }
+    while (row.length && row[row.length - 1] === "") row.pop();
+    rows.push(row);
+  }
+  return rows;
+}
+async function parseXlsx(buffer) {
+  var entries = await readZip(buffer);
+  var byName = {};
+  entries.forEach(function (e) { byName[e.name] = e.data; });
+  var dec = new TextDecoder();
+  var wbXml = byName["xl/workbook.xml"] ? dec.decode(byName["xl/workbook.xml"]) : null;
+  if (!wbXml) fail("Not a valid .xlsx file: xl/workbook.xml is missing.");
+  var relsXml = byName["xl/_rels/workbook.xml.rels"] ? dec.decode(byName["xl/_rels/workbook.xml.rels"]) : "";
+  var relMap = {};
+  var rr = /<Relationship[^>]*>/g, rm2;
+  while ((rm2 = rr.exec(relsXml)) !== null) { var id = xmlAttr(rm2[0], "Id"), tg = xmlAttr(rm2[0], "Target"); if (id && tg) relMap[id] = tg.replace(/^\//, "").replace(/^xl\//, "xl/"); }
+  var shared = [];
+  if (byName["xl/sharedStrings.xml"]) shared = parseSharedStrings(dec.decode(byName["xl/sharedStrings.xml"]));
+  var sheets = [], sr = /<sheet[^>]*>/g, sm;
+  while ((sm = sr.exec(wbXml)) !== null) {
+    var nm = xmlAttr(sm[0], "name") || "Sheet";
+    var rid = xmlAttr(sm[0], "r:id") || xmlAttr(sm[0], "id");
+    var target = relMap[rid] || "";
+    var path = target.indexOf("xl/") === 0 ? target : "xl/" + target.replace(/^\//, "");
+    sheets.push({ name: nm, path: path });
+  }
+  var maxRows = getMaxRows(), maxCell = getMaxCell(), out = [];
+  for (var i = 0; i < sheets.length; i++) {
+    var data = byName[sheets[i].path];
+    if (!data) continue;
+    var rows = parseSheetXml(dec.decode(data), shared, maxRows, maxCell);
+    out.push({ name: sheets[i].name, rows: rows });
+  }
+  if (!out.length) fail("No readable worksheets found in the .xlsx file.");
+  return out;
+}
+
+/* ---------- .xls (BIFF) best-effort parsing ---------- */
+function parseXls(buffer) {
+  var view = new DataView(buffer);
+  if (buffer.byteLength < 8) fail("Not a valid .xls file: file is too small.");
+  var bof = view.getUint16(0, true);
+  if (bof !== 0x0809 && bof !== 0x0209 && bof !== 0x0409 && bof !== 0x0009 && bof !== 0x0609)
+    fail("Could not parse this .xls file: it is not a recognised BIFF workbook (older or non-standard .xls files are not supported). Save it as .xlsx or CSV and try again.");
+  var sst = [], sstBuf = null, grid = {}, maxRow = -1, maxCol = -1, p = 0, maxRows = getMaxRows(), maxCell = getMaxCell();
+  function readUnicodeString(dv, off, lenBytes) {
+    var count = dv.getUint16(off, true); off += 2;
+    var flags = dv.getUint8(off); off += 1;
+    var is16 = (flags & 1) !== 0, hasRich = (flags & 8) !== 0, hasExt = (flags & 4) !== 0;
+    var out = "";
+    if (is16) { for (var i = 0; i < count; i++) out += String.fromCharCode(dv.getUint16(off + i * 2, true)); off += count * 2; }
+    else { for (var j = 0; j < count; j++) out += String.fromCharCode(dv.getUint8(off + j)); off += count; }
+    if (hasRich) { var runs = dv.getUint16(off, true); off += 2 + runs * 4; }
+    if (hasExt) { var el = dv.getUint32(off, true); off += 4 + el; }
+    return { text: out, next: off };
+  }
+  while (p + 4 <= buffer.byteLength) {
+    var type = view.getUint16(p, true), len = view.getUint16(p + 2, true);
+    var start = p + 4, end = Math.min(start + len, buffer.byteLength);
+    if (type === 0x000A) break; /* EOF */
+    if (type === 0x00FC) { /* SST: concatenate following CONTINUE records */
+      var parts = [new Uint8Array(buffer.slice(start, end))];
+      var q = end;
+      while (q + 4 <= buffer.byteLength && view.getUint16(q, true) === 0x003C) {
+        var cl = view.getUint16(q + 2, true);
+        parts.push(new Uint8Array(buffer.slice(q + 4, Math.min(q + 4 + cl, buffer.byteLength))));
+        q += 4 + cl;
+      }
+      var totalLen = parts.reduce(function (a, b) { return a + b.length; }, 0);
+      var merged = new Uint8Array(totalLen), o = 0;
+      parts.forEach(function (x) { merged.set(x, o); o += x.length; });
+      var sdv = new DataView(merged.buffer);
+      var soff = 8, scount = sdv.getUint32(4, true);
+      for (var s = 0; s < scount; s++) {
+        if (soff >= merged.length) break;
+        var r = readUnicodeString(sdv, soff, 0);
+        var txt = r.text;
+        if (txt.length > maxCell) fail("Cell length limit exceeded: a cell is longer than the configured max cell length of " + maxCell + " characters.");
+        sst.push(txt);
+        soff = r.next;
+        if (soff < merged.length && sdv.getUint8(soff) === 0) { /* continuation flag byte inside merged buffer: skip if present */ }
+      }
+      p = q; continue;
+    }
+    if (type === 0x00FD || type === 0x0204 || type === 0x0203 || type === 0x027E || type === 0x0205) {
+      var row = view.getUint16(start, true), col = view.getUint16(start + 2, true);
+      var val = "";
+      if (type === 0x00FD) { var idx = view.getUint32(start + 6, true); val = sst[idx] != null ? sst[idx] : ""; }
+      else if (type === 0x0204) { var lr = readUnicodeString(view, start + 6, 0); val = lr.text; }
+      else if (type === 0x0203) { val = String(view.getFloat64(start + 6, true)); }
+      else if (type === 0x027E) {
+        var raw = view.getUint32(start + 6, true);
+        if (raw & 2) { val = String((raw | 0) >> 2); }
+        else { var b8 = new ArrayBuffer(8), d8 = new DataView(b8); d8.setUint32(0, 0, true); d8.setUint32(4, raw & 0xfffffffc, true); val = String(d8.getFloat64(0, true)); }
+        if (raw & 1) val = String(Number(val) / 100);
+      }
+      else if (type === 0x0205) { val = view.getUint8(start + 6) === 1 ? "TRUE" : "FALSE"; }
+      if (String(val).length > maxCell) fail("Cell length limit exceeded: a cell is longer than the configured max cell length of " + maxCell + " characters.");
+      if (!grid[row]) grid[row] = {};
+      grid[row][col] = val;
+      if (row > maxRow) maxRow = row;
+      if (col > maxCol) maxCol = col;
+      if (maxRow + 1 > getMaxRows()) fail("Worksheet rows limit exceeded: a worksheet has more rows than the configured max worksheet rows of " + getMaxRows() + ".");
+    }
+    p = end;
+  }
+  if (maxRow < 0) fail("Could not parse this .xls file: no data rows were found.");
+  var rows = [];
+  for (var r = 0; r <= maxRow; r++) {
+    var arr = [];
+    for (var c = 0; c <= maxCol; c++) arr.push(grid[r] && grid[r][c] != null ? String(grid[r][c]) : "");
+    while (arr.length && arr[arr.length - 1] === "") arr.pop();
+    rows.push(arr);
+  }
+  return [{ name: "Sheet1", rows: rows }];
+}
+
+/* ---------- CSV / plain-text parsing ---------- */
+function detectDelimiter(lines) {
+  var cands = [",", ";", "\t", "|"], best = ",", bestScore = 0;
+  cands.forEach(function (d) {
+    var counts = lines.slice(0, 5).map(function (l) { return (l.split(d).length - 1); });
+    var min = Math.min.apply(null, counts), avg = counts.reduce(function (a, b) { return a + b; }, 0) / counts.length;
+    if (min > 0 && avg > bestScore) { bestScore = avg; best = d; }
+  });
+  return bestScore > 0 ? best : null;
+}
+function parseDelimited(text) {
+  var lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(function (l) { return l.trim() !== ""; });
+  if (!lines.length) fail("The file is empty.");
+  var delim = detectDelimiter(lines);
+  if (!delim) fail("Could not detect a delimiter (comma, semicolon, tab or |) in the text file. Check the file format.");
+  var rows = lines.map(function (line) {
+    var out = [], cur = "", inQ = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (inQ) {
+        if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+        else cur += ch;
+      } else if (ch === '"') inQ = true;
+      else if (ch === delim) { out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur);
+    out.forEach(function (c) { checkCellLength(c); });
+    return out.map(function (c) { return c.trim(); });
+  });
+  if (rows.length > getMaxRows()) fail("Worksheet rows limit exceeded: the file has more rows than the configured max worksheet rows of " + getMaxRows() + ".");
+  return rows;
+}
+
+/* ---------- header synonyms & record mapping ---------- */
+var FIELD_SYNONYMS = {
+  assetId: ["asset id", "assetid", "unique id", "unique identifier", "asset tag", "serial", "serial no", "serial number", "asset no", "asset number", "identifier", "id"],
+  name: ["name of asset", "asset name", "name", "product name", "product", "asset", "item name", "item", "software", "hardware"],
+  brand: ["brand", "vendor", "manufacturer", "make", "supplier"],
+  model: ["model", "model no", "model number"],
+  version: ["version", "ver", "release", "release version"],
+  status: ["status of usage", "usage status", "status", "usage", "state"],
+  description: ["description", "desc", "details"],
+  purchased: ["purchased date", "purchase date", "date purchased", "bought date"],
+  commissioned: ["commissioned date", "commission date", "date commissioned", "go-live date"],
+  location: ["location", "site", "room", "building"],
+  ip: ["ip address", "ipaddress", "ip addr", "ip"],
+  extSupport: ["extended support", "ext support", "extended", "ext. support"]
+};
+var FIELD_ORDER = ["assetId", "name", "brand", "model", "version", "status", "description", "purchased", "commissioned", "location", "ip", "extSupport"];
+function normHeader(h) { return String(h == null ? "" : h).trim().toLowerCase().replace(/\s+/g, " "); }
+function mapHeaders(headerRow) {
+  var map = {}, used = {};
+  FIELD_ORDER.forEach(function (field) {
+    var syns = FIELD_SYNONYMS[field];
+    for (var i = 0; i < headerRow.length; i++) {
+      if (used[i]) continue;
+      if (syns.indexOf(normHeader(headerRow[i])) !== -1) { map[field] = i; used[i] = true; break; }
+    }
+  });
+  return map;
+}
+function sheetToRecords(sheet, report) {
+  var rows = sheet.rows;
+  var headerIdx = -1, map = null, recognised = 0;
+  for (var h = 0; h < Math.min(rows.length, 10); h++) {
+    var m = mapHeaders(rows[h]);
+    var count = Object.keys(m).length;
+    if (count >= 2 && (m.name || m.brand)) { headerIdx = h; map = m; recognised = count; break; }
+  }
+  if (headerIdx < 0) {
+    report.push("Sheet '" + sheet.name + "': no header row found — expected columns such as Name, Brand, Version, Status. Sheet skipped.");
+    return [];
+  }
+  var unmapped = [];
+  rows[headerIdx].forEach(function (h, i) { if (h && h.trim() && !(Object.keys(map).some(function (k) { return map[k] === i; }))) unmapped.push(h); });
+  report.push("Sheet '" + sheet.name + "': header row " + (headerIdx + 1) + ", recognised " + recognised + " field(s)" + (unmapped.length ? "; unrecognised columns ignored: " + unmapped.join(", ") : "") + ".");
+  var out = [];
+  for (var r = headerIdx + 1; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.every(function (c) { return !c || !String(c).trim(); })) continue;
+    var rec = { _sheet: sheet.name, _row: r + 1, _raw: row.slice(), _headers: rows[headerIdx].slice() };
+    FIELD_ORDER.forEach(function (f) { rec[f] = map[f] != null && row[map[f]] != null ? String(row[map[f]]).trim() : ""; });
+    out.push(rec);
+  }
+  report.push("Sheet '" + sheet.name + "': " + out.length + " data row(s) kept.");
+  return out;
+}
+
+/* ---------- state ---------- */
+var state = {
+  assets: [], mapping: [], assetFileName: "", mappingFileName: "",
+  originalHeaders: [], checkRunning: false, stopRequested: false,
+  checkFinishedAt: null, eoslCache: null, eoslTried: false,
+  sortKey: "", sortDir: 1, manualIndex: -1
+};
+function setStatus(msg) { $("status").textContent = msg; }
+function setError(msg) { $("loadError").textContent = msg || ""; }
+function showProgress(done, total) {
+  var p = $("progress");
+  p.max = total > 0 ? total : 100; p.value = done;
+  setStatus("Checked " + done + " / " + total + " assets…");
+}
+function normaliseExt(v) {
+  var t = String(v || "").trim().toLowerCase();
+  if (t === "yes" || t === "y" || t === "true") return "Yes";
+  return "No";
+}
+function computeIdentity(a) {
+  if (a.assetId) return { key: "ID:" + a.assetId.toLowerCase(), label: a.assetId };
+  var parts = [a.name, a.brand, a.model, a.version, a.location, a.ip].map(function (x) { return (x || "").trim().toLowerCase(); });
+  return { key: "FB:" + parts.join("|"), label: [a.name, a.brand, a.model, a.version, a.location, a.ip].filter(Boolean).join(" / ") || "(no identity)" };
+}
+function applyIdentity() {
+  var counts = {};
+  state.assets.forEach(function (a) {
+    var idn = computeIdentity(a);
+    a.assetIdLabel = idn.label; a.identityKey = idn.key;
+    counts[idn.key] = (counts[idn.key] || 0) + 1;
+  });
+  state.assets.forEach(function (a) { a.nonUnique = counts[a.identityKey] > 1; });
+}
+function missingMandatory(a) {
+  var miss = [];
+  ["name", "brand", "version", "status"].forEach(function (f) { if (!a[f]) miss.push(f); });
+  return miss;
+}
+function recomputeResult(a) {
+  if (a._incomplete) { a.result = "Incomplete"; return; }
+  if (a.nonUnique) { a.result = "Attention"; return; }
+  if (a.manualNeeded && !a.eosDate) { a.result = "Manual check needed"; return; }
+  if (!a.eosDate) { a.result = "Not published"; return; }
+  var eos = parseDateLoose(a.eosDate);
+  if (!eos) { a.result = "Not published"; return; }
+  var now = new Date(); now.setHours(0, 0, 0, 0);
+  var three = addMonths(now, 3);
+  if (eos < now) a.result = "Flagged";
+  else if (eos <= three) a.result = "Amber";
+  else a.result = "In support";
+}
+function recomputeAll() { state.assets.forEach(recomputeResult); }
+
+/* ---------- loading files ---------- */
+async function loadAssetFile(file) {
+  setError(""); state.checkFinishedAt = null; $("checkFinished").textContent = "";
+  if (file.size > MAX_FILE_BYTES) fail("File size limit exceeded: '" + file.name + "' is " + (file.size / 1048576).toFixed(1) + " MB, over the max input file limit of 100 MB.");
+  var buf = await file.arrayBuffer();
+  var name = file.name.toLowerCase();
+  var sheets;
+  if (name.endsWith(".xlsx") || name.endsWith(".xlsm")) sheets = await parseXlsx(buf);
+  else if (name.endsWith(".xls")) sheets = parseXls(buf);
+  else sheets = [{ name: "Sheet1", rows: parseDelimited(new TextDecoder().decode(buf)) }];
+  var report = ["File '" + file.name + "' (" + (file.size / 1024).toFixed(1) + " KB)."];
+  var records = [];
+  sheets.forEach(function (s) { records = records.concat(sheetToRecords(s, report)); });
+  if (!records.length) fail("No asset records found. Check the file has a header row with columns such as Name, Brand, Version, Status.");
+  state.originalHeaders = records[0]._headers;
+  records.forEach(function (a) {
+    a.extSupport = normaliseExt(a.extSupport);
+    a.eosDate = ""; a.phase = ""; a.source = ""; a.route = ""; a.dateAccessed = ""; a.verifiedBy = "";
+    a.manualNeeded = false; a.fetchNote = ""; a.result = "";
+    a._incomplete = missingMandatory(a).length > 0;
+    if (a._incomplete) a.fetchNote = "Missing mandatory field(s): " + missingMandatory(a).join(", ") + ".";
+  });
+  state.assets = records;
+  state.assetFileName = file.name;
+  applyIdentity(); recomputeAll();
+  $("parseReport").textContent = report.join("\n");
+  $("fileInfo").textContent = "Loaded: " + file.name + " — " + records.length + " asset(s) from " + sheets.length + " sheet(s).";
+  $("btnCheck").disabled = false;
+  setStatus("Loaded " + records.length + " asset(s). Click “Check EOS” to look up End of Support dates.");
+  renderAll();
+}
+async function loadMappingFile(file) {
+  setError("");
+  if (file.size > MAX_FILE_BYTES) fail("File size limit exceeded: '" + file.name + "' is over the max input file limit of 100 MB.");
+  var buf = await file.arrayBuffer();
+  var name = file.name.toLowerCase();
+  var sheets;
+  if (name.endsWith(".xlsx") || name.endsWith(".xlsm")) sheets = await parseXlsx(buf);
+  else if (name.endsWith(".xls")) sheets = parseXls(buf);
+  else sheets = [{ name: "Sheet1", rows: parseDelimited(new TextDecoder().decode(buf)) }];
+  var report = [$("parseReport").textContent];
+  var mapSyn = {
+    brand: ["brand", "vendor", "manufacturer"],
+    product: ["product", "product name", "name pattern", "name", "pattern"],
+    sourceUrl: ["source url", "source", "url", "lifecycle url"],
+    sourceType: ["source type", "type"],
+    lastEos: ["last known eos date", "last known end of support", "eos date", "end of support date", "last eos date"],
+    notes: ["notes", "note", "comments"]
+  };
+  var rows = [];
+  sheets.forEach(function (s) {
+    var hdr = -1, m = null;
+    for (var h = 0; h < Math.min(s.rows.length, 10); h++) {
+      var mm = {};
+      Object.keys(mapSyn).forEach(function (k) {
+        s.rows[h].forEach(function (cell, i) { if (mapSyn[k].indexOf(normHeader(cell)) !== -1 && mm[k] == null) mm[k] = i; });
+      });
+      if (mm.brand != null || mm.product != null) { hdr = h; m = mm; break; }
+    }
+    if (hdr < 0) { report.push("Mapping sheet '" + s.name + "': no header row found — expected Brand, Product, Source URL, Source type, Last known EOS date. Sheet skipped."); return; }
+    for (var r = hdr + 1; r < s.rows.length; r++) {
+      var row = s.rows[r];
+      if (!row || row.every(function (c) { return !c || !String(c).trim(); })) continue;
+      rows.push({
+        brand: m.brand != null ? String(row[m.brand] || "").trim() : "",
+        product: m.product != null ? String(row[m.product] || "").trim() : "",
+        sourceUrl: m.sourceUrl != null ? String(row[m.sourceUrl] || "").trim() : "",
+        sourceType: m.sourceType != null ? String(row[m.sourceType] || "").trim() : "",
+        lastEos: m.lastEos != null ? String(row[m.lastEos] || "").trim() : "",
+        notes: m.notes != null ? String(row[m.notes] || "").trim() : ""
+      });
+    }
+    report.push("Mapping sheet '" + s.name + "': " + rows.length + " mapping row(s) kept.");
+  });
+  state.mapping = rows;
+  state.mappingFileName = file.name;
+  $("parseReport").textContent = report.join("\n");
+  setStatus("Mapping file loaded: " + file.name + " — " + rows.length + " mapping row(s).");
+  renderAll();
+}
+function findMapping(a) {
+  var b = (a.brand || "").toLowerCase(), n = (a.name || "").toLowerCase();
+  var best = null;
+  state.mapping.forEach(function (m) {
+    var mb = (m.brand || "").toLowerCase(), mp = (m.product || "").toLowerCase();
+    var score = 0;
+    if (mb && b && (b === mb || b.indexOf(mb) !== -1 || mb.indexOf(b) !== -1)) score += 2;
+    if (mp && n && (n === mp || n.indexOf(mp) !== -1 || mp.indexOf(n) !== -1)) score += 3;
+    if (score > 0 && (!best || score > best._s)) { best = m; best._s = score; }
+  });
+  return best;
+}
+
+/* ---------- live EOS fetch (FR-05, FR-08) ---------- */
+function slugify(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
+function fetchWithTimeout(url, ms) {
+  var ctrl = new AbortController();
+  var t = setTimeout(function () { ctrl.abort(); }, ms || 10000);
+  return fetch(url, { signal: ctrl.signal }).finally(function () { clearTimeout(t); });
+}
+function matchCycle(cycles, version) {
+  if (!cycles || !cycles.length) return null;
+  var v = String(version || "").trim();
+  var exact = cycles.find(function (c) { return String(c.cycle) === v; });
+  if (exact) return exact;
+  var pref = cycles.find(function (c) { return v && v.indexOf(String(c.cycle) + ".") === 0; });
+  if (pref) return pref;
+  var pref2 = cycles.find(function (c) { return v && String(c.cycle).indexOf(v + ".") === 0; });
+  return pref2 || null;
+}
+async function fetchEndOfLife(a) {
+  var cands = [];
+  var s1 = slugify(a.name), s2 = slugify((a.brand || "") + " " + (a.name || ""));
+  if (s1 && cands.indexOf(s1) === -1) cands.push(s1);
+  if (s2 && s2 !== s1 && cands.indexOf(s2) === -1) cands.push(s2);
+  for (var i = 0; i < cands.length; i++) {
+    try {
+      var res = await fetchWithTimeout(EOL_API + encodeURIComponent(cands[i]) + ".json", 10000);
+      if (res.status === 404) continue;
+      if (!res.ok) { a.fetchNote = "endoflife.date returned HTTP " + res.status + " for '" + cands[i] + "'."; continue; }
+      var data = await res.json();
+      if (!Array.isArray(data) || !data.length) continue;
+      var cyc = matchCycle(data, a.version);
+      if (!cyc) { a.fetchNote = "endoflife.date has '" + cands[i] + "' but no cycle matching version " + (a.version || "(none)") + "."; continue; }
+      if (cyc.eol === false) return { found: true, eosDate: "", noEos: true, note: "endoflife.date: version " + a.version + " is still in support (no EOS date published)." };
+      if (cyc.eol === true) return { found: true, eosDate: "", noEos: true, note: "endoflife.date: End of Support reached but no date published." };
+      if (typeof cyc.eol === "string" && parseDateLoose(cyc.eol)) {
+        return { found: true, eosDate: isoDate(parseDateLoose(cyc.eol)), phase: "End of Support", source: EOL_API + cands[i] + ".json", route: "aggregator", verifiedBy: "endoflife.date" };
+      }
+      return { found: true, eosDate: "", noEos: true, note: "endoflife.date: no usable EOS date for version " + a.version + "." };
+    } catch (e) {
+      a.fetchNote = "endoflife.date could not be reached (" + (e && e.name === "AbortError" ? "timed out" : "network error") + ").";
+    }
+    await sleep(250);
+  }
+  return { found: false };
+}
+function searchEoslObject(node, name, brand, version, depth) {
+  if (!node || typeof node !== "object" || depth > 4) return null;
+  var nameKeys = ["product", "name", "title", "model", "device"];
+  var dateKeys = ["eol", "eos", "end_of_support", "endOfSupport", "support_end", "end_of_life", "eol_date", "eos_date"];
+  if (!Array.isArray(node)) {
+    var hay = nameKeys.map(function (k) { return node[k] ? String(node[k]) : ""; }).join(" ").toLowerCase();
+    var nm = (name || "").toLowerCase(), br = (brand || "").toLowerCase();
+    if (hay && ((nm && hay.indexOf(nm) !== -1) || (br && hay.indexOf(br) !== -1))) {
+      for (var i = 0; i < dateKeys.length; i++) {
+        var dv = node[dateKeys[i]];
+        if (typeof dv === "string" && parseDateLoose(dv)) return { date: isoDate(parseDateLoose(dv)), key: dateKeys[i] };
+      }
+    }
+  }
+  var keys = Object.keys(node);
+  for (var j = 0; j < keys.length; j++) {
+    var r = searchEoslObject(node[keys[j]], name, brand, version, depth + 1);
+    if (r) return r;
+  }
+  return null;
+}
+async function fetchEosl(a) {
+  try {
+    if (!state.eoslTried) {
+      state.eoslTried = true;
+      var res = await fetchWithTimeout(EOSL_URL, 20000);
+      if (!res.ok) { a.fetchNote = "EOSL.ai lookup could not be reached (HTTP " + res.status + ")."; return { found: false }; }
+      state.eoslCache = await res.json();
+    }
+    if (!state.eoslCache) return { found: false };
+    var hit = searchEoslObject(state.eoslCache, a.name, a.brand, a.version, 0);
+    if (hit) return { found: true, eosDate: hit.date, phase: "End of Support", source: EOSL_URL, route: "aggregator", verifiedBy: "eosl.ai" };
+    return { found: false };
+  } catch (e) {
+    a.fetchNote = "EOSL.ai lookup could not be reached (" + (e && e.name === "AbortError" ? "timed out" : "network error") + ").";
+    return { found: false };
+  }
+}
+async function tryVendorPage(a, mapping) {
+  var url = mapping && mapping.sourceUrl ? mapping.sourceUrl : "";
+  if (!url || !/^https?:\/\//i.test(url)) return { found: false };
+  try {
+    var res = await fetchWithTimeout(url, 10000);
+    if (!res.ok) { a.fetchNote = "Vendor page " + url + " returned HTTP " + res.status + "."; return { found: false }; }
+    var ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.indexOf("json") !== -1) {
+      var data = await res.json();
+      var hit = searchEoslObject(data, a.name, a.brand, a.version, 0);
+      if (hit) return { found: true, eosDate: hit.date, phase: "End of Support", source: url, route: "vendor page", verifiedBy: url };
+    }
+    a.fetchNote = "Vendor page fetched but no EOS date could be extracted automatically; manual check needed.";
+    return { found: false };
+  } catch (e) {
+    a.fetchNote = "Vendor page " + url + " could not be reached from this browser (network or CORS blocked).";
+    return { found: false };
+  }
+}
+function applyFetchResult(a, r) {
+  a.eosDate = r.eosDate || "";
+  a.phase = r.phase || (a.eosDate ? "End of Support" : "");
+  a.source = r.source || "";
+  a.route = r.route || "";
+  a.dateAccessed = todayISO();
+  a.verifiedBy = r.verifiedBy || "";
+  a.manualNeeded = false;
+  if (r.note) a.fetchNote = r.note;
+}
+async function checkAsset(a, skipFetch) {
+  a.eosDate = ""; a.phase = ""; a.source = ""; a.route = ""; a.dateAccessed = ""; a.verifiedBy = "";
+  a.manualNeeded = false; a.fetchNote = a._incomplete ? a.fetchNote : "";
+  if (a._incomplete) return;
+  var mapping = findMapping(a);
+  if (!skipFetch) {
+    var r1 = await fetchEndOfLife(a);
+    if (r1.found && r1.eosDate) { applyFetchResult(a, r1); return; }
+    if (r1.found && r1.noEos) { a.fetchNote = r1.note || ""; a.manualNeeded = false; return; }
+    var r2 = await fetchEosl(a);
+    if (r2.found && r2.eosDate) { applyFetchResult(a, r2); return; }
+    if (mapping && mapping.sourceUrl) {
+      var r3 = await tryVendorPage(a, mapping);
+      if (r3.found && r3.eosDate) { applyFetchResult(a, r3); return; }
+    }
+    await sleep(250);
+  }
+  if (mapping && mapping.lastEos) {
+    var d = parseDateLoose(mapping.lastEos);
+    if (d) {
+      applyFetchResult(a, { eosDate: isoDate(d), phase: "End of Support", source: mapping.sourceUrl || "Mapping file", route: "mapping file", verifiedBy: mapping.sourceUrl || "Mapping file" });
+      return;
+    }
+    a.fetchNote = "Mapping file has a last-known EOS date that could not be read as a date: '" + mapping.lastEos + "'.";
+  }
+  if (mapping && (mapping.sourceType || "").toLowerCase() !== "manual") {
+    /* The mapping file lists this product but publishes no EOS date: "Not published", not a manual check. */
+    a.manualNeeded = false;
+    a.fetchNote = (a.fetchNote ? a.fetchNote + " " : "") + "Mapping file lists this product with no EOS date published.";
+    return;
+  }
+  a.manualNeeded = true;
+  a.fetchNote = (a.fetchNote ? a.fetchNote + " " : "") + "No source found — manual check needed.";
+}
+async function checkAll() {
+  if (!state.assets.length) { setError("Load an asset file first."); return; }
+  state.checkRunning = true; state.stopRequested = false;
+  $("btnCheck").disabled = true; $("btnStop").disabled = false; setError("");
+  var skipFetch = $("skipFetch").checked;
+  var total = state.assets.length;
+  for (var i = 0; i < total; i++) {
+    if (state.stopRequested) { setStatus("Check stopped at " + i + " / " + total + " assets."); break; }
+    showProgress(i, total);
+    try { await checkAsset(state.assets[i], skipFetch); }
+    catch (e) { state.assets[i].fetchNote = "Check failed: " + (e && e.message ? e.message : e); state.assets[i].manualNeeded = true; }
+    recomputeResult(state.assets[i]);
+    if (i % 5 === 4) renderAll();
+    await sleep(0);
+  }
+  showProgress(total, total);
+  state.checkRunning = false;
+  $("btnCheck").disabled = false; $("btnStop").disabled = true;
+  state.checkFinishedAt = new Date();
+  $("checkFinished").textContent = "Check finished: " + state.checkFinishedAt.toLocaleString() + ". This is a snapshot at the time the check ran.";
+  setStatus("Checked " + total + " asset(s). " + (state.stopRequested ? "Stopped early." : "Done."));
+  recomputeAll(); renderAll();
+}
+
+/* ---------- rendering ---------- */
+var RESULT_BADGE = { "Flagged": "b-flagged", "Amber": "b-amber", "Not published": "b-notpub", "Incomplete": "b-incomplete", "Attention": "b-attention", "In support": "b-ok", "Manual check needed": "b-manual" };
+function badge(result) {
+  var s = document.createElement("span");
+  s.className = "badge " + (RESULT_BADGE[result] || "b-notpub");
+  s.textContent = result || "";
+  return s;
+}
+function renderSummary() {
+  var c = { total: state.assets.length, flagged: 0, amber: 0, notpub: 0, incomplete: 0, attention: 0, manual: 0 };
+  state.assets.forEach(function (a) {
+    if (a.result === "Flagged") c.flagged++;
+    else if (a.result === "Amber") c.amber++;
+    else if (a.result === "Not published") c.notpub++;
+    else if (a.result === "Incomplete") c.incomplete++;
+    else if (a.result === "Attention") c.attention++;
+    if (a.manualNeeded && !a.eosDate) c.manual++;
+  });
+  var wrap = $("summaryCards");
+  wrap.innerHTML = "";
+  [["Total assets", c.total], ["Flagged", c.flagged], ["Amber", c.amber], ["Not published", c.notpub], ["Incomplete", c.incomplete], ["Attention", c.attention], ["Manual check needed", c.manual]].forEach(function (pair) {
+    var d = document.createElement("div"); d.className = "card";
+    var n = document.createElement("div"); n.className = "n"; n.textContent = pair[1];
+    var l = document.createElement("div"); l.className = "l"; l.textContent = pair[0];
+    d.appendChild(n); d.appendChild(l); wrap.appendChild(d);
+  });
+}
+function filteredAssets() {
+  var q = ($("search").value || "").trim().toLowerCase();
+  var f = $("filter").value;
+  var list = state.assets.filter(function (a) {
+    if (f && a.result !== f) return false;
+    if (q) {
+      var hay = ((a.name || "") + " " + (a.brand || "") + " " + (a.version || "")).toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    return true;
+  });
+  if (state.sortKey) {
+    var k = state.sortKey, dir = state.sortDir;
+    list = list.slice().sort(function (x, y) {
+      var vx = k === "eosDate" ? (parseDateLoose(x.eosDate) || new Date(8640000000000000)) : String(x[k] || "").toLowerCase();
+      var vy = k === "eosDate" ? (parseDateLoose(y.eosDate) || new Date(8640000000000000)) : String(y[k] || "").toLowerCase();
+      if (vx < vy) return -1 * dir;
+      if (vx > vy) return 1 * dir;
+      return 0;
+    });
+  }
+  return list;
+}
+function renderTable() {
+  var body = $("resultsBody");
+  body.innerHTML = "";
+  var list = filteredAssets();
+  if (!state.assets.length) { var tr0 = document.createElement("tr"); var td0 = document.createElement("td"); td0.colSpan = 13; td0.className = "small"; td0.textContent = "No assets loaded."; tr0.appendChild(td0); body.appendChild(tr0); return; }
+  if (!list.length) { var tr1 = document.createElement("tr"); var td1 = document.createElement("td"); td1.colSpan = 13; td1.className = "small"; td1.textContent = "No assets match the current search or filter."; tr1.appendChild(td1); body.appendChild(tr1); return; }
+  list.forEach(function (a) {
+    var idx = state.assets.indexOf(a);
+    var tr = document.createElement("tr");
+    function cell(text) { var td = document.createElement("td"); td.textContent = text == null ? "" : text; tr.appendChild(td); return td; }
+    cell(a.assetIdLabel);
+    cell(a.name); cell(a.brand); cell(a.model); cell(a.version); cell(a.status);
+    cell(a.eosDate || (a.result === "Not published" ? "Not published" : ""));
+    cell(a.phase);
+    var tdR = document.createElement("td"); tdR.appendChild(badge(a.result)); tr.appendChild(tdR);
+    var tdS = document.createElement("td");
+    if (a.source && /^https?:\/\//i.test(a.source)) { var link = document.createElement("a"); link.href = a.source; link.target = "_blank"; link.rel = "noopener"; link.textContent = a.source; tdS.appendChild(link); }
+    else tdS.textContent = a.source || "";
+    if (a.fetchNote) { var br = document.createElement("br"); tdS.appendChild(br); var sm = document.createElement("span"); sm.className = "small"; sm.textContent = a.fetchNote; tdS.appendChild(sm); }
+    tr.appendChild(tdS);
+    cell(a.route);
+    var tdE = document.createElement("td");
+    var sel = document.createElement("select");
+    ["No", "Yes"].forEach(function (v) { var o = document.createElement("option"); o.value = v; o.textContent = v; if (a.extSupport === v) o.selected = true; sel.appendChild(o); });
+    sel.addEventListener("change", function () { a.extSupport = sel.value; });
+    tdE.appendChild(sel); tr.appendChild(tdE);
+    var tdA = document.createElement("td");
+    var btn = document.createElement("button");
+    btn.textContent = "Manual check";
+    btn.addEventListener("click", function () { openManual(idx); });
+    tdA.appendChild(btn); tr.appendChild(tdA);
+    body.appendChild(tr);
+  });
+}
+function renderAll() { renderSummary(); renderTable(); }
+
+/* ---------- manual check panel ---------- */
+function openManual(idx) {
+  state.manualIndex = idx;
+  var a = state.assets[idx];
+  $("manualFor").textContent = (a.name || "") + " " + (a.version || "") + " (" + (a.brand || "") + ")";
+  $("manualDate").value = a.eosDate || "";
+  $("manualSource").value = a.source || "";
+  $("manualBy").value = a.verifiedBy || "";
+  $("manualPanel").style.display = "block";
+  $("manualPanel").scrollIntoView({ block: "nearest" });
+}
+function closeManual() { state.manualIndex = -1; $("manualPanel").style.display = "none"; }
+function saveManual() {
+  var idx = state.manualIndex;
+  if (idx < 0) return;
+  var a = state.assets[idx];
+  var d = $("manualDate").value;
+  if (!d) { setError("Enter an EOS date for the manual check."); return; }
+  a.eosDate = d; a.phase = "End of Support";
+  a.source = $("manualSource").value.trim();
+  a.verifiedBy = $("manualBy").value.trim();
+  a.route = "manual check";
+  a.dateAccessed = todayISO();
+  a.manualNeeded = false;
+  a.fetchNote = "";
+  setError("");
+  recomputeResult(a);
+  closeManual(); renderAll();
+  setStatus("Manual entry saved for " + (a.name || "") + " " + (a.version || "") + ".");
+}
+
+/* ---------- enhanced Excel export (FR-11, stored .xlsx) ---------- */
+function buildXlsx(headers, rows) {
+  var strings = [], strIndex = {};
+  function sidx(s) {
+    s = s == null ? "" : String(s);
+    if (strIndex[s] == null) { strIndex[s] = strings.length; strings.push(s); }
+    return strIndex[s];
+  }
+  var sheetRows = [];
+  sheetRows.push('<row r="1">' + headers.map(function (h, i) { return '<c r="' + colLetter(i) + '1" t="s" s="1"><v>' + sidx(h) + '</v></c>'; }).join("") + "</row>");
+  rows.forEach(function (row, ri) {
+    var r = ri + 2;
+    sheetRows.push('<row r="' + r + '">' + row.map(function (v, i) { return '<c r="' + colLetter(i) + r + '" t="s"><v>' + sidx(v) + '</v></c>'; }).join("") + "</row>");
+  });
+  var sharedXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' + strings.length + '" uniqueCount="' + strings.length + '">' +
+    strings.map(function (s) { return "<si><t>" + esc(s) + "</t></si>"; }).join("") + "</sst>";
+  var sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + sheetRows.join("") + "</sheetData></worksheet>";
+  var stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts><font><b/></font><font/></fonts><fills><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0"/></cellXfs><cellStyles><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  var files = [
+    { name: "[Content_Types].xml", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+    { name: "_rels/.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+    { name: "xl/workbook.xml", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="ITAES" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+    { name: "xl/_rels/workbook.xml.rels", data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>' },
+    { name: "xl/worksheets/sheet1.xml", data: sheetXml },
+    { name: "xl/sharedStrings.xml", data: sharedXml },
+    { name: "xl/styles.xml", data: stylesXml }
+  ];
+  var chunks = [], central = [], offset = 0;
+  files.forEach(function (f) {
+    var data = strToBytes(f.data);
+    var crc = crc32(data);
+    var nameBytes = strToBytes(f.name);
+    var lh = [].concat(u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length), u16(0));
+    var localHeader = new Uint8Array(lh);
+    chunks.push(localHeader, nameBytes, data);
+    central.push({ name: nameBytes, crc: crc, size: data.length, offset: offset });
+    offset += localHeader.length + nameBytes.length + data.length;
+  });
+  var cdParts = [];
+  central.forEach(function (c) {
+    var cd = [].concat(u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(c.crc), u32(c.size), u32(c.size), u16(c.name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(c.offset));
+    cdParts.push(new Uint8Array(cd), c.name);
+  });
+  var cdSize = cdParts.reduce(function (a, b) { return a + b.length; }, 0);
+  var eocd = [].concat(u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cdSize), u32(offset), u16(0));
+  var all = chunks.concat(cdParts, [new Uint8Array(eocd)]);
+  var total = all.reduce(function (a, b) { return a + b.length; }, 0);
+  var out = new Uint8Array(total), o = 0;
+  all.forEach(function (part) { out.set(part, o); o += part.length; });
+  return out;
+}
+function colLetter(i) { var s = ""; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+function exportEnhanced() {
+  if (!state.assets.length) { setError("Load an asset file first."); return; }
+  var added = ["Source URL", "Date Accessed", "Quoted EOS Date", "Phase", "Verified By"];
+  var headers = (state.originalHeaders.length ? state.originalHeaders : ["Name", "Brand", "Version", "Status"]).concat(added);
+  var rows = state.assets.map(function (a) {
+    /* Map this record's own columns onto the export header set by header name,
+       so sheets with different column orders still line up. */
+    var base = headers.slice(0, headers.length - added.length).map(function (h) {
+      var i = (a._headers || []).indexOf(h);
+      return i >= 0 && a._raw[i] != null ? String(a._raw[i]) : "";
+    });
+    return base.concat([a.source || "", a.dateAccessed || "", a.eosDate || "", a.phase || "", a.verifiedBy || ""]);
+  });
+  var bytes = buildXlsx(headers, rows);
+  var stamp = todayISO().replace(/-/g, "");
+  var blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  var link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "itaes-enhanced-" + stamp + ".xlsx";
+  document.body.appendChild(link); link.click();
+  setTimeout(function () { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+  setStatus("Enhanced file exported: itaes-enhanced-" + stamp + ".xlsx (" + rows.length + " asset(s)). This is a snapshot at the time the check ran.");
+}
+
+/* ---------- clear & wiring ---------- */
+function clearAll() {
+  state.assets = []; state.mapping = []; state.assetFileName = ""; state.mappingFileName = "";
+  state.originalHeaders = []; state.checkFinishedAt = null; state.eoslCache = null; state.eoslTried = false;
+  state.stopRequested = true; state.sortKey = ""; state.sortDir = 1;
+  $("assetFile").value = ""; $("mapFile").value = ""; $("search").value = ""; $("filter").value = "";
+  $("progress").value = 0; $("checkFinished").textContent = "";
+  $("parseReport").textContent = "Nothing loaded yet.";
+  $("fileInfo").textContent = "";
+  $("btnCheck").disabled = true; $("btnStop").disabled = true;
+  closeManual(); setError(""); setStatus("Cleared. Load an asset file to start again.");
+  renderAll();
+}
+async function handleAssetInput(file) {
+  if (!file) return;
+  try { await loadAssetFile(file); }
+  catch (e) { setError("Could not load '" + file.name + "': " + (e && e.message ? e.message : e)); setStatus("Load failed."); }
+}
+async function handleMappingInput(file) {
+  if (!file) return;
+  try { await loadMappingFile(file); }
+  catch (e) { setError("Could not load mapping file '" + file.name + "': " + (e && e.message ? e.message : e)); }
+}
+$("assetFile").addEventListener("change", function (e) { handleAssetInput(e.target.files[0]); });
+$("mapFile").addEventListener("change", function (e) { handleMappingInput(e.target.files[0]); });
+$("btnCheck").addEventListener("click", function () { checkAll(); });
+$("btnStop").addEventListener("click", function () { state.stopRequested = true; });
+$("btnExport").addEventListener("click", exportEnhanced);
+$("btnClear").addEventListener("click", clearAll);
+$("search").addEventListener("input", renderTable);
+$("filter").addEventListener("change", renderTable);
+$("manualSave").addEventListener("click", saveManual);
+$("manualCancel").addEventListener("click", closeManual);
+document.querySelectorAll("#resultsTable th[data-k]").forEach(function (th) {
+  th.addEventListener("click", function () {
+    var k = th.getAttribute("data-k");
+    if (state.sortKey === k) state.sortDir = -state.sortDir;
+    else { state.sortKey = k; state.sortDir = 1; }
+    renderTable();
+  });
+});
+var dz = $("dropzone");
+["dragenter", "dragover"].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add("over"); }); });
+["dragleave", "drop"].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove("over"); }); });
+dz.addEventListener("drop", function (e) {
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleAssetInput(f);
+});
+renderAll();
+</script>
+</body>
+</html>
